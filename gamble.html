@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>♥ 爱你 ♥</title>
+    <style>
+        :root {
+            --ark-orange: #d64531;
+            --ark-bg: #e2e2e2;
+            /* 固定参数区 */
+            --ticket-w: 70px;
+            --ticket-h: 1200px; 
+            --ticket-gap: 34px;
+        }
+
+        body {
+            background-color: var(--ark-bg);
+            margin: 0;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: "PingFang SC", sans-serif;
+            overflow: hidden; /* 禁止身体滚动 */
+            touch-action: none;
+        }
+
+        /* 强制横屏提示遮罩 */
+        #orientation-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: #000;
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        /* UI 元素：固定在屏幕角落，不随页面缩放 */
+        .ui-top {
+            position: fixed;
+            top: 10px; 
+            left: 20px;
+            border-left: 5px solid #000;
+            padding-left: 15px;
+            z-index: 100;
+        }
+        .ui-top .label { font-size: 14px; font-weight: bold; color: #444; }
+        .ui-top .count { font-size: 50px; font-weight: 900; line-height: 1; }
+
+        .btn-area { 
+            position: fixed; 
+            bottom: 10px; 
+            right: 20px; 
+            z-index: 100; 
+        }
+        #draw-btn {
+            width: 200px; height: 50px; font-size: 18px;
+            cursor: not-allowed; background: #ccc; color: #fff;
+            border: none; box-shadow: 0 4px 0 #999; transition: all 0.3s;
+        }
+        #draw-btn.ready {
+            background: linear-gradient(135deg, #e65a41 0%, var(--ark-orange) 100%);
+            cursor: pointer; box-shadow: 0 4px 0 #a33224;
+        }
+
+        /* 幸运墙主容器：锁定在视图中心 */
+        .wall {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%); /* 确保 Wall 的几何中心在屏幕中心 */
+            width: 0; height: 0; /* 容器本身不占位，靠子元素溢出 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .row {
+            display: flex;
+            gap: var(--ticket-gap);
+            pointer-events: none;
+            position: absolute;
+            white-space: nowrap;
+        }
+
+        /* 布局逻辑：
+           row-top 的底部(bottom)对齐中心线，向上延伸
+           row-bottom 的顶部(top)对齐中心线，向下延伸
+        */
+        .row-top {
+            bottom: 0;
+            /* -50% 是为了让这一排签位左右居中，-150px 是向左侧滑移的距离 */
+            transform: translateX(calc(50% + 78px));
+            margin-bottom: -174px; /* 负边距让签位向中心线靠拢/重叠 */
+            z-index: 2;
+        }
+
+        .row-bottom {
+            top: 0;
+            /* -50% 是为了让这一排签位左右居中，+150px 是向右侧滑移的距离 */
+            transform: translateX(calc(-50% - 78px));
+            margin-top: -174px;
+        }
+
+        .row-top .ticket { transform: rotate(-135deg); }
+        .row-bottom .ticket { transform: rotate(45deg); }
+
+        /* 幸运签主体：固定尺寸 */
+        .ticket {
+            position: relative;
+            width: var(--ticket-w);
+            height: var(--ticket-h);
+            transition: all 1s cubic-bezier(0.15, 0.85, 0.35, 1);
+            cursor: pointer;
+            pointer-events: auto;
+            flex-shrink: 0;
+        }
+
+        /* 1. 修改白色尾部主体：加入浅色斜纹背景 */
+        .ticket-body {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #fff;
+            /* 核心：使用重复线性渐变制作极浅的斜纹纹理 */
+            background-image: repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 10px,
+                rgba(0, 0, 0, 0.02) 10px,
+                rgba(0, 0, 0, 0.02) 11px
+            );
+            box-shadow: 2px 5px 15px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            overflow: hidden; /* 确保装饰不溢出 */
+        }
+
+        /* 2. 利用伪元素 ::before 添加中间的装饰水印文字 (LOTTERY) */
+        .row-top .ticket-body::before {
+            /* 提示：图片中的 "LOTTERY" 字体带有倾斜艺术感 */
+            content: "|||||||| خوش نصیب ||||||||"; 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50.5%, -940%) rotate(90deg); /* 配合竖向票面旋转 */
+            
+            font-family: "Arial";
+            font-size: 22px;
+            font-weight: 900;
+            color: rgba(0, 0, 0, 0.16); /* 极浅色模拟水印感 */
+            letter-spacing: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+        .row-bottom .ticket-body::before {
+            /* 提示：图片中的 "LOTTERY" 字体带有倾斜艺术感 */
+            content: "|||||||| خوش نصیب ||||||||"; 
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-49%, -940%) rotate(90deg) scaleY(-1) ;/* 配合竖向票面旋转 */
+            
+            font-family: "Arial";
+            font-size: 22px;
+            font-weight: 900;
+            color: rgba(0, 0, 0, 0.16); /* 极浅色模拟水印感 */
+            letter-spacing: 4px;
+            white-space: nowrap;
+            pointer-events: none;
+        }
+
+        /* 3. 利用伪元素 ::after 添加图片侧边的黑色小三角 */
+        .ticket-body::after {
+            content: "";
+            position: absolute;
+            /* 定位于票签靠近头部的连接处 */
+            top: 175px; 
+            right: 6px;
+            width: 0;
+            height: 0;
+            /* 绘制黑色向右的小三角形 */
+            border-top: 6px solid transparent;
+            border-bottom: 6px solid transparent;
+            border-left: 9px solid  rgba(0, 0, 0, 0.16);
+            opacity: 0.8;
+            pointer-events: none;
+            transform: translate(-270%, -200%) rotate(-90deg);
+        }
+
+        /* 4. 优化悬停效果：保持原有的阴影增强 */
+        .ticket:hover .ticket-body {
+            box-shadow: 10px 15px 25px rgba(0,0,0,0.2);
+            background-color: #fcfcfc;
+        }                                                                             
+
+        /* 修改后的橙色头部样式 */
+        .ticket-head {
+            position: absolute;
+            top: 0;
+            width: 100%;
+            height: 150px;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 100%, 0 90%);
+            transition: filter 0.5s ease;
+
+            /* 1. 基础背景色与深浅渐变底层 */
+            background-color: var(--ark-orange);
+            background-image: 
+                /* 左侧的垂直装饰条 (浅色) */
+                linear-gradient(90deg, rgba(255,255,255,0.3) 0, rgba(255,255,255,0.3) 4px, transparent 4px),
+                /* 中间的放射状装饰 (使用径向渐变模拟 X 型视觉) */
+                radial-gradient(circle at center, rgba(0,0,0,0.15) 0%, transparent 70%),
+                /* 上下边缘的细微深色边 */
+                linear-gradient(0deg, rgba(0,0,0,0.1) 0, rgba(0,0,0,0.1) 1px, transparent 1px),
+                linear-gradient(180deg, rgba(0,0,0,0.1) 0, rgba(0,0,0,0.1) 1px, transparent 1px);
+            background-position: 8px 0, center center, 0 0, 0 0;
+            background-repeat: no-repeat;
+        }
+
+        /* 2. 利用伪元素添加更复杂的装饰（如右侧双箭头和细线纹理） */
+        .ticket-head::before {
+            content: "«"; /* 使用字符模拟右侧箭头 */
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%) rotate(90deg); /* 旋转以匹配竖向票签 */
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 14px;
+            letter-spacing: -2px;
+            font-weight: bold;
+        }
+
+        .ticket-head::after {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            /* 添加细密的斜纹装饰 */
+            background: repeating-linear-gradient(
+                45deg,
+                transparent,
+                transparent 8px,
+                rgba(255, 255, 255, 0.05) 8px,
+                rgba(255, 255, 255, 0.05) 9px
+            );
+            pointer-events: none;
+        }
+
+        /* 3. 修改文字样式以匹配图片 */
+        .ticket-head span {
+            color: #fff;
+            font-weight: 900;
+            font-size: 14px;
+            transform: rotate(-90deg);
+            white-space: nowrap;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            /* 增加微弱发光感 */
+            text-shadow: 0 0 5px rgba(255, 255, 255, 0.3);
+            /* 模拟图片中的文字位移 */
+            margin-right: 00px; 
+            color: #ffd9009f;
+            font-family: "Calibri";
+        }
+        
+        .row-top .ticket-head span {
+            font-weight: bold;
+            transform: rotate(90deg); white-space: nowrap; letter-spacing: 2px;
+        }
+
+        .row-bottom .ticket-head span {
+            font-weight: bold;
+            transform: rotate(-90deg); white-space: nowrap; letter-spacing: 2px;
+        }
+
+        .stamp {
+            position: absolute;
+            top: 0; width: 100%; height: 150px;
+            background: rgba(0,0,0,0.8);
+            z-index: 10; opacity: 0;
+            display: flex; align-items: center; justify-content: center;
+            clip-path: polygon(0 0, 100% 0, 100% 90%, 50% 100%, 0 90%);
+            font-family: "Calibri";
+        }
+
+        .row-top .stamp::after {
+            content: attr(data-text); color: #999; border: 2px solid #999;
+            padding: 2px 15px; font-size: 18px; transform: rotate(90deg);
+        }
+        .row-bottom .stamp::after {
+            content: attr(data-text); color: #999; border: 2px solid #999;
+            padding: 2px 15px; font-size: 18px; transform: rotate(-90deg);
+        }
+
+        /* 动画状态 */
+        .wall.confirmed .ticket.selected {
+            transform: rotate(var(--rot)) translateY(-50px);
+            z-index: 20;
+        }
+        .row-top .ticket.selected { --rot: -135deg; }
+        .row-bottom .ticket.selected { --rot: 45deg; }
+
+        .wall.confirmed .ticket.not-selected {
+            opacity: 0.2; 
+            transform: rotate(var(--rot)) translateY(150px);
+        }
+        .row-top .ticket.not-selected { --rot: -135deg; }
+        .row-bottom .ticket.not-selected { --rot: 45deg; }
+        .ticket.selected .stamp, .ticket.fake-selected .stamp { opacity: 1; }
+
+        /* 真签橙色光辉 */
+        .wall.confirmed .ticket.selected .ticket-body {
+            box-shadow: 0 0 30px 5px rgba(214, 69, 49, 0.6);
+        }
+        .wall.confirmed .ticket.selected .ticket-head {
+            filter: drop-shadow(0 0 15px rgba(214, 69, 49, 0.8));
+        }
+        /* 当墙被确认后，选中的那个签（真签）文字再放大一点 */
+        .wall.confirmed .ticket.selected .stamp::after {
+            font-weight: bold;
+            color: #fff;       /* 真签文字变白 */
+            border-color: #fff; /* 真签边框变白 */
+        }
+    </style>
+</head>
+<body>
+
+<div id="orientation-overlay">
+    <div style="text-align:center">请旋转手机至横屏模式</div>
+</div>
+
+<div class="ui-top">
+    <div class="label">REMAINING 剩余可选签数</div>
+    <div class="count" id="count">2</div>
+</div>
+
+<div class="wall" id="wall">
+    <div class="row row-top" id="row1"></div>
+    <div class="row row-bottom" id="row2"></div>
+</div>
+
+<div class="btn-area">
+    <button id="draw-btn" onclick="executeDraw()" disabled>请选择幸运笺</button>
+</div>
+
+<script>
+    // 屏幕检测
+    function checkOrientation() {
+        document.getElementById('orientation-overlay').style.display = 
+            (window.innerWidth < window.innerHeight) ? 'flex' : 'none';
+    }
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('load', checkOrientation);
+
+    const row1 = document.getElementById('row1');
+    const row2 = document.getElementById('row2');
+    let selected = [];
+
+    function createTickets(container, count) {
+        for(let i=0; i<count; i++) {
+            const t = document.createElement('div');
+            t.className = 'ticket';
+            t.innerHTML = `
+                <div class="ticket-body"></div>
+                <div class="ticket-head"><span>مطمئن زندگی</span></div>
+                <div class="stamp" data-text="已选中"></div>
+            `;
+            t.onclick = () => handleSelect(t);
+            container.appendChild(t);
+        }
+    }
+
+    createTickets(row1, 6);
+    createTickets(row2, 6);
+
+    function handleSelect(el) {
+        if(document.getElementById('wall').classList.contains('confirmed')) return;
+        if(el.classList.contains('selected')) {
+            el.classList.remove('selected');
+            selected = selected.filter(i => i !== el);
+        } else if(selected.length < 2) {
+            el.classList.add('selected');
+            selected.push(el);
+        }
+        updateUI();
+    }
+
+    function updateUI() {
+        const btn = document.getElementById('draw-btn');
+        document.getElementById('count').innerText = 2 - selected.length;
+        if(selected.length === 2) {
+            btn.classList.add('ready');
+            btn.innerText = "确认抽取";
+            btn.disabled = false;
+        } else {
+            btn.classList.remove('ready');
+            btn.innerText = "请选择幸运笺";
+            btn.disabled = true;
+        }
+    }
+
+    function executeDraw() {
+        if (selected.length !== 2) return;
+        setTimeout(() => {
+            document.getElementById('wall').classList.add('confirmed');
+            document.getElementById('draw-btn').style.display = 'none';
+
+            const winnerIndex = Math.random() > 0.5 ? 0 : 1;
+            const winner = selected[winnerIndex];
+            const loser = selected[winnerIndex === 0 ? 1 : 0];
+            const prizeList = ["200", "400", "800", "600"];
+            const finalPrize = prizeList[Math.floor(Math.random() * prizeList.length)];
+
+            document.querySelectorAll('.ticket').forEach(t => {
+                const stamp = t.querySelector('.stamp');
+                if (t === winner) {
+                    stamp.setAttribute('data-text', finalPrize);
+                } else if (t === loser) {
+                    t.classList.remove('selected');
+                    t.classList.add('not-selected');
+                    t.classList.add('fake-selected'); 
+                    stamp.setAttribute('data-text', '200');
+                } else {
+                    t.classList.add('not-selected');
+                }
+            });
+        }, 500);
+    }
+</script>
+
+</body>
+</html>
